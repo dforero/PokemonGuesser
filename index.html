@@ -177,6 +177,12 @@
       found.clear();
       [...grid.children].forEach(el => {
         el.classList.remove("found");
+        el.classList.remove("found-by-user");
+        const label = el.querySelector(".label");
+        if (label) {
+          label.textContent = "";
+          label.style.display = "none";
+        }
       });
 
       data.found.forEach(name => {
