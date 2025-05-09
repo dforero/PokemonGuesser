@@ -42,7 +42,7 @@
       padding: 8px;
       background: #eee;
       border-radius: 8px;
-      text-transform: capitalize;
+      /* text-transform: capitalize; */
       height: 100px;
       display: flex;
       flex-direction: column;
@@ -144,33 +144,60 @@
     const resetBtn = document.getElementById("resetBtn");
     const leaderboard = document.getElementById("leaderboard");
 
+    const endBtn = document.getElementById("endBtn");
+    endBtn.addEventListener("click", async () => {
+      const currentDoc = await getDoc(gameRef);
+      const data = currentDoc.exists() ? currentDoc.data() : null;
+      if (!data || !data.guessesBy || !data.guesses) return;
+
+      const allFound = Object.keys(data.guessesBy || {});
+      if (allFound.length === 0) return;
+
+      await setDoc(gameRef, {
+        found: allFound,
+        guesses: data.guesses,
+        guessesBy: data.guessesBy,
+        forceGroupedView: true
+      });
+    });
+
     let username = localStorage.getItem("pokemonUsername");
     if (!username) {
       username = prompt("Enter your name (for leaderboard):") || "Anonymous";
       localStorage.setItem("pokemonUsername", username);
     }
     document.getElementById("usernameDisplay").textContent = `You are logged in as: ${username}`;
+    const adminControls = document.getElementById("adminControls");
+    if (username.trim().toLowerCase() === "admin") {
+      adminControls.style.display = "block";
+    }
 
-    pokemonList.forEach(name => {
-      const div = document.createElement("div");
-      div.className = "pokemon";
-      div.dataset.name = name;
+    function RebuildGrid()
+    {
+      grid.innerHTML = "";
+      pokemonList.forEach(name => {
+        const div = document.createElement("div");
+        div.className = "pokemon";
+        div.dataset.name = name;
 
-      const label = document.createElement("div");
-      label.className = "label";
-      label.textContent = "";
-      label.style.display = "none";
-      div.appendChild(label);
+        const label = document.createElement("div");
+        label.className = "label";
+        label.textContent = "";
+        label.style.display = "none";
+        div.appendChild(label);
 
-      const img = document.createElement("img");
-      img.src = `https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/${pokemonList.indexOf(name) + 1}.png`;
-      img.alt = name;
+        const img = document.createElement("img");
+        img.src = `https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/${pokemonList.indexOf(name) + 1}.png`;
+        img.alt = name;
 
-      div.appendChild(img);
-      grid.appendChild(div);
-    });
+        div.appendChild(img);
+        grid.appendChild(div);
+      });
+    }
+    RebuildGrid();
 
     onSnapshot(gameRef, snapshot => {
+      found.clear();
       const data = snapshot.data();
       if (!data || !Array.isArray(data.found)) return;
 
@@ -214,6 +241,7 @@
       if (data.guesses) {
         const top5 = Object.entries(data.guesses).sort((a, b) => b[1] - a[1]).slice(0, 5);
         const leaderboardList = document.getElementById("liveLeaderboardList");
+        if (!leaderboardList) return;
         leaderboardList.innerHTML = "";
         top5.forEach(([user, score], i) => {
           const li = document.createElement("li");
@@ -234,59 +262,56 @@
         });
       }
 
-      if (found.size === pokemonList.length && data.guesses) {
-        // Animate and group by contributor
-        const grouped = Object.entries(data.guessesBy || {}).reduce((acc, nameEntry) => {
-          const [name, user] = nameEntry;
-          if (!acc[user]) acc[user] = [];
-          acc[user].push(name);
-          return acc;
-        }, {});
+      if (data.guesses) {
+        if (data.forceGroupedView) {
+          // Animate and group by contributor
+          const grouped = Object.entries(data.guessesBy || {}).reduce((acc, nameEntry) => {
+            const [name, user] = nameEntry;
+            if (!acc[user]) acc[user] = [];
+            acc[user].push(name);
+            return acc;
+          }, {});
 
-        const usersSorted = Object.entries(data.guesses || {}).sort((a, b) => b[1] - a[1]).map(e => e[0]);
-        const orderedNames = usersSorted.flatMap(user => grouped[user] || []);
+          const usersSorted = Object.entries(data.guesses || {}).sort((a, b) => b[1] - a[1]).map(e => e[0]);
+          const orderedNames = usersSorted.flatMap(user => grouped[user] || []);
 
-        const fragments = orderedNames.map(name => {
-          const el = [...grid.children].find(e => e.dataset.name === name);
-          return el;
-        }).filter(Boolean);
+          const fragments = orderedNames.map(name => {
+            const el = [...grid.children].find(e => e.dataset.name === name);
+            return el;
+          }).filter(Boolean);
 
-        grid.style.display = "none";
-        grid.innerHTML = "";
+          grid.style.display = "none";
+          grid.innerHTML = "";
 
-        usersSorted.forEach(user => {
-          const header = document.createElement("h3");
-          header.textContent = `${user}’s Pokémon`;
-          header.style.gridColumn = "1 / -1";
-          header.style.margin = "10px 0 0 0";
-          grid.appendChild(header);
+          usersSorted.forEach(user => {
+            const header = document.createElement("h3");
+            header.textContent = `${user}’s Pokémon`;
+            header.style.gridColumn = "1 / -1";
+            header.style.margin = "10px 0 0 0";
+            grid.appendChild(header);
 
-          (grouped[user] || []).forEach(name => {
-            const el = fragments.find(e => e.dataset.name === name);
-            if (el) grid.appendChild(el);
-          });
-        });
-
-        setTimeout(() => {
-          fragments.forEach(el => {
-            el.style.transition = "transform 0.3s, opacity 0.3s";
-            el.style.opacity = 0;
-          });
-          grid.style.display = "grid";
-          requestAnimationFrame(() => {
-            fragments.forEach(el => {
-              el.style.opacity = 1;
+            (grouped[user] || []).forEach(name => {
+              const el = fragments.find(e => e.dataset.name === name);
+              if (el) grid.appendChild(el);
             });
           });
-        }, 100);
 
-        const entries = Object.entries(data.guesses).sort((a, b) => b[1] - a[1]);
-        leaderboard.innerHTML = `<h2>Leaderboard</h2><ol>` +
-          entries.map(([user, score]) => `<li>${user}: ${score}</li>`).join("") +
-          `</ol>`;
-        // leaderboard no longer used
-      } else {
-        // leaderboard no longer used
+          setTimeout(() => {
+            fragments.forEach(el => {
+              el.style.transition = "transform 0.3s, opacity 0.3s";
+              el.style.opacity = 0;
+            });
+            grid.style.display = "grid";
+            requestAnimationFrame(() => {
+              fragments.forEach(el => {
+                el.style.opacity = 1;
+              });
+            });
+          }, 100);
+        }
+      }
+      if (Object.keys(data.guesses).length === 0 && data.forceGroupedView === false) {
+          RebuildGrid();
       }
     });
 
@@ -326,28 +351,7 @@
     resetBtn.addEventListener("click", async () => {
       const confirmReset = confirm("Are you sure you want to reset the game for everyone?");
       if (!confirmReset) return;
-      await setDoc(gameRef, { found: [], guesses: {}, guessesBy: {} });
-
-      // Reset UI grid to original order
-      grid.innerHTML = "";
-      pokemonList.forEach(name => {
-        const div = document.createElement("div");
-        div.className = "pokemon";
-        div.dataset.name = name;
-
-        const label = document.createElement("div");
-        label.className = "label";
-        label.textContent = "";
-        label.style.display = "none";
-        div.appendChild(label);
-
-        const img = document.createElement("img");
-        img.src = `https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/${pokemonList.indexOf(name) + 1}.png`;
-        img.alt = name;
-
-        div.appendChild(img);
-        grid.appendChild(div);
-      });
+      await setDoc(gameRef, { found: [], guesses: {}, guessesBy: {}, forceGroupedView: false });
     });
   </script>
 </head>
@@ -358,7 +362,10 @@
         <p id="usernameDisplay"></p>
         <input id="guessInput" type="text" placeholder="Enter Pokémon name..." autofocus />
         <br>
-        <button id="resetBtn">Reset Game</button>
+        <div id="adminControls" style="display: none;">
+          <button id="resetBtn">Reset Game</button>
+          <button id="endBtn">End Game</button>
+        </div>
         <p><strong><span id="foundCount">0</span>/151</strong> found | <strong><span id="userFoundCount">0</span></strong> by you</p>
       </div>
       <div id="liveLeaderboard" style="border-left: 2px solid #ccc; padding-left: 20px; display: flex; flex-direction: column; justify-content: center; height: 100%;">
