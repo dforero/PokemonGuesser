@@ -1,0 +1,354 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Original 151 Pokémon Game</title>
+  <style>
+    body {
+      font-family: sans-serif;
+      margin: 0;
+      padding-top: 256px;
+      text-align: center;
+    }
+    .fixed-header {
+      position: fixed;
+      top: 0;
+      width: 100%;
+      background: white;
+      padding: 10px 0;
+      box-shadow: 0 2px 5px rgba(0,0,0,0.1);
+      z-index: 10;
+    }
+    input[type="text"] {
+      font-size: 20px;
+      padding: 10px;
+      width: 300px;
+    }
+    button {
+      margin-top: 10px;
+      padding: 10px 20px;
+      font-size: 16px;
+      cursor: pointer;
+    }
+    .pokemon-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(120px, 1fr));
+      gap: 10px;
+      margin: 20px;
+    }
+    .pokemon {
+      position: relative;
+      padding: 8px;
+      background: #eee;
+      border-radius: 8px;
+      text-transform: capitalize;
+    }
+    .pokemon img {
+      width: 100%;
+      filter: brightness(0);
+    }
+    .found img {
+      filter: brightness(1);
+    }
+    .found {
+      background: #a3e635;
+      font-weight: bold;
+    }
+    .found-by-user {
+      box-shadow: 0 0 10px 2px dodgerblue;
+      border: 3px solid dodgerblue;
+    }
+    #leaderboard {
+      margin-top: 30px;
+      display: none;
+    }
+    ..label {
+      position: absolute;
+      top: 5px;
+      left: 5px;
+      right: 5px;
+      font-size: 12px;
+      background: rgba(255, 255, 255, 0.8);
+      border-radius: 4px;
+      padding: 2px;
+      font-weight: bold;
+      text-align: center;
+    }
+  </style>
+  <script type="module">
+    import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js";
+    import { getFirestore, doc, getDoc, setDoc, onSnapshot } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js";
+
+    const firebaseConfig = {
+      apiKey: "AIzaSyArN4QzILrCEYShCjeWDc7pedDzLaohROY",
+      authDomain: "pokemonguesser-dbd42.firebaseapp.com",
+      projectId: "pokemonguesser-dbd42",
+      storageBucket: "pokemonguesser-dbd42.firebasestorage.app",
+      messagingSenderId: "583832046031",
+      appId: "1:583832046031:web:b29a61c4fbc132fa2c6aba"
+    };
+
+    const app = initializeApp(firebaseConfig);
+    const db = getFirestore(app);
+    const gameRef = doc(db, "games", "shared-game");
+
+    const pokemonList = [
+      "bulbasaur", "ivysaur", "venusaur", "charmander", "charmeleon", "charizard",
+      "squirtle", "wartortle", "blastoise", "caterpie", "metapod", "butterfree",
+      "weedle", "kakuna", "beedrill", "pidgey", "pidgeotto", "pidgeot",
+      "rattata", "raticate", "spearow", "fearow", "ekans", "arbok",
+      "pikachu", "raichu", "sandshrew", "sandslash", "nidoran-f", "nidorina", "nidoqueen",
+      "nidoran-m", "nidorino", "nidoking", "clefairy", "clefable", "vulpix", "ninetales",
+      "jigglypuff", "wigglytuff", "zubat", "golbat", "oddish", "gloom", "vileplume",
+      "paras", "parasect", "venonat", "venomoth", "diglett", "dugtrio",
+      "meowth", "persian", "psyduck", "golduck", "mankey", "primeape",
+      "growlithe", "arcanine", "poliwag", "poliwhirl", "poliwrath",
+      "abra", "kadabra", "alakazam", "machop", "machoke", "machamp",
+      "bellsprout", "weepinbell", "victreebel", "tentacool", "tentacruel",
+      "geodude", "graveler", "golem", "ponyta", "rapidash", "slowpoke", "slowbro",
+      "magnemite", "magneton", "farfetch'd", "doduo", "dodrio", "seel", "dewgong",
+      "grimer", "muk", "shellder", "cloyster", "gastly", "haunter", "gengar",
+      "onix", "drowzee", "hypno", "krabby", "kingler", "voltorb", "electrode",
+      "exeggcute", "exeggutor", "cubone", "marowak", "hitmonlee", "hitmonchan",
+      "lickitung", "koffing", "weezing", "rhyhorn", "rhydon", "chansey",
+      "tangela", "kangaskhan", "horsea", "seadra", "goldeen", "seaking",
+      "staryu", "starmie", "mr. mime", "scyther", "jynx", "electabuzz", "magmar",
+      "pinsir", "tauros", "magikarp", "gyarados", "lapras", "ditto",
+      "eevee", "vaporeon", "jolteon", "flareon", "porygon", "omanyte", "omastar",
+      "kabuto", "kabutops", "aerodactyl", "snorlax", "articuno", "zapdos", "moltres",
+      "dratini", "dragonair", "dragonite", "mewtwo", "mew"
+    ];
+
+    const aliases = {
+      "nidoran": ["nidoran-f", "nidoran-m"]
+    };
+
+    const found = new Set();
+    const grid = document.getElementById("pokemonGrid");
+    const input = document.getElementById("guessInput");
+    const count = document.getElementById("foundCount");
+    const resetBtn = document.getElementById("resetBtn");
+    const leaderboard = document.getElementById("leaderboard");
+
+    let username = localStorage.getItem("pokemonUsername");
+    if (!username) {
+      username = prompt("Enter your name (for leaderboard):") || "Anonymous";
+      localStorage.setItem("pokemonUsername", username);
+    }
+    document.getElementById("usernameDisplay").textContent = `You are logged in as: ${username}`;
+
+    pokemonList.forEach(name => {
+      const div = document.createElement("div");
+      div.className = "pokemon";
+      div.dataset.name = name;
+
+      const label = document.createElement("div");
+      label.className = "label";
+      label.textContent = "";
+      label.style.display = "none";
+      div.appendChild(label);
+
+      const img = document.createElement("img");
+      img.src = `https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/${pokemonList.indexOf(name) + 1}.png`;
+      img.alt = name;
+
+      div.appendChild(img);
+      grid.appendChild(div);
+    });
+
+    onSnapshot(gameRef, snapshot => {
+      const data = snapshot.data();
+      if (!data || !Array.isArray(data.found)) return;
+
+      found.clear();
+      [...grid.children].forEach(el => {
+        el.classList.remove("found");
+      });
+
+      data.found.forEach(name => {
+        found.add(name);
+        const el = [...grid.children].find(e => e.dataset.name === name);
+        if (el) {
+          el.classList.add("found");
+          const label = el.querySelector(".label");
+          if (data.guessesBy && data.guessesBy[name]) {
+            if (label) {
+              label.textContent = data.guessesBy[name];
+              label.style.display = "block";
+            }
+          }
+          if (data.guessesBy && data.guessesBy[name] === username) {
+            el.classList.add("found-by-user");
+          } else {
+            el.classList.remove("found-by-user");
+          }
+        }
+      });
+
+      count.textContent = found.size;
+
+      const userScore = data.guesses && data.guesses[username] ? data.guesses[username] : 0;
+      document.getElementById("userFoundCount").textContent = userScore;
+
+      // Update live leaderboard regardless of full completion
+      if (data.guesses) {
+        const top5 = Object.entries(data.guesses).sort((a, b) => b[1] - a[1]).slice(0, 5);
+        const leaderboardList = document.getElementById("liveLeaderboardList");
+        leaderboardList.innerHTML = "";
+        top5.forEach(([user, score], i) => {
+          const li = document.createElement("li");
+          const medal = i === 0 ? '🥇' : i === 1 ? '🥈' : i === 2 ? '🥉' : `${i + 1}`;
+          li.textContent = `${medal}: ${score} - ${user}`;
+          li.style.opacity = 0;
+          li.style.transform = "translateY(10px)";
+          li.style.transition = "opacity 0.5s ease, transform 0.5s ease, background-color 0.5s ease";
+          li.style.backgroundColor = "#fff7d6";
+          leaderboardList.appendChild(li);
+          requestAnimationFrame(() => {
+            li.style.opacity = 1;
+            li.style.transform = "translateY(0)";
+            setTimeout(() => {
+              li.style.backgroundColor = "transparent";
+            }, 500);
+          });
+        });
+      }
+
+      if (found.size === pokemonList.length && data.guesses) {
+        // Animate and group by contributor
+        const grouped = Object.entries(data.guessesBy || {}).reduce((acc, nameEntry) => {
+          const [name, user] = nameEntry;
+          if (!acc[user]) acc[user] = [];
+          acc[user].push(name);
+          return acc;
+        }, {});
+
+        const usersSorted = Object.entries(data.guesses || {}).sort((a, b) => b[1] - a[1]).map(e => e[0]);
+        const orderedNames = usersSorted.flatMap(user => grouped[user] || []);
+
+        const fragments = orderedNames.map(name => {
+          const el = [...grid.children].find(e => e.dataset.name === name);
+          return el;
+        }).filter(Boolean);
+
+        grid.style.display = "none";
+        grid.innerHTML = "";
+
+        usersSorted.forEach(user => {
+          const header = document.createElement("h3");
+          header.textContent = `${user}’s Pokémon`;
+          header.style.gridColumn = "1 / -1";
+          header.style.margin = "10px 0 0 0";
+          grid.appendChild(header);
+
+          (grouped[user] || []).forEach(name => {
+            const el = fragments.find(e => e.dataset.name === name);
+            if (el) grid.appendChild(el);
+          });
+        });
+
+        setTimeout(() => {
+          fragments.forEach(el => {
+            el.style.transition = "transform 0.3s, opacity 0.3s";
+            el.style.opacity = 0;
+          });
+          grid.style.display = "grid";
+          requestAnimationFrame(() => {
+            fragments.forEach(el => {
+              el.style.opacity = 1;
+            });
+          });
+        }, 100);
+
+        const entries = Object.entries(data.guesses).sort((a, b) => b[1] - a[1]);
+        leaderboard.innerHTML = `<h2>Leaderboard</h2><ol>` +
+          entries.map(([user, score]) => `<li>${user}: ${score}</li>`).join("") +
+          `</ol>`;
+        // leaderboard no longer used
+      } else {
+        // leaderboard no longer used
+      }
+    });
+
+    input.addEventListener("input", async () => {
+      const guess = input.value.trim().toLowerCase();
+      let matched = [];
+
+      if (pokemonList.includes(guess)) {
+        matched = [guess];
+      } else if (aliases[guess]) {
+        matched = aliases[guess];
+      }
+
+      // Filter out already found Pokémon
+      matched = matched.filter(name => !found.has(name));
+      if (matched.length === 0) return;
+
+      input.value = "";
+      const currentDoc = await getDoc(gameRef);
+      let current = currentDoc.exists() ? currentDoc.data().found : [];
+      let currentGuesses = currentDoc.exists() ? currentDoc.data().guesses || {} : {};
+
+      matched.forEach(name => {
+        if (!current.includes(name)) {
+          current.push(name);
+          currentGuesses[username] = (currentGuesses[username] || 0) + 1;
+        }
+      });
+
+      let guessesBy = currentDoc.exists() ? currentDoc.data().guessesBy || {} : {};
+      matched.forEach(name => {
+        guessesBy[name] = username;
+      });
+      await setDoc(gameRef, { found: current, guesses: currentGuesses, guessesBy });
+    });
+
+    resetBtn.addEventListener("click", async () => {
+      const confirmReset = confirm("Are you sure you want to reset the game for everyone?");
+      if (!confirmReset) return;
+      await setDoc(gameRef, { found: [], guesses: {}, guessesBy: {} });
+
+      // Reset UI grid to original order
+      grid.innerHTML = "";
+      pokemonList.forEach(name => {
+        const div = document.createElement("div");
+        div.className = "pokemon";
+        div.dataset.name = name;
+
+        const label = document.createElement("div");
+        label.className = "label";
+        label.textContent = "";
+        label.style.display = "none";
+        div.appendChild(label);
+
+        const img = document.createElement("img");
+        img.src = `https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/${pokemonList.indexOf(name) + 1}.png`;
+        img.alt = name;
+
+        div.appendChild(img);
+        grid.appendChild(div);
+      });
+    });
+  </script>
+</head>
+<body>
+  <div class="fixed-header">
+    <div style="display: flex; justify-content: center; align-items: stretch; gap: 40px; flex-wrap: wrap;">
+      <div>
+        <p id="usernameDisplay"></p>
+        <input id="guessInput" type="text" placeholder="Enter Pokémon name..." autofocus />
+        <br>
+        <button id="resetBtn">Reset Game</button>
+        <p><strong><span id="foundCount">0</span>/151</strong> found | <strong><span id="userFoundCount">0</span></strong> by you</p>
+      </div>
+      <div id="liveLeaderboard" style="border-left: 2px solid #ccc; padding-left: 20px; display: flex; flex-direction: column; justify-content: center; height: 100%;">
+        <h4 style="margin: 0 0 4px 0;">Top Contributors</h4>
+        <ul id="liveLeaderboardList" style="list-style: none; padding: 0; margin: 0; font-size: 16px; text-align: left;"></ul>
+      </div>
+    </div>
+  </div>
+  <div class="pokemon-grid" id="pokemonGrid"></div>
+  
+</body>
+</html>
