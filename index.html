@@ -345,7 +345,13 @@
       matched.forEach(name => {
         guessesBy[name] = username;
       });
-      await setDoc(gameRef, { found: current, guesses: currentGuesses, guessesBy });
+      const shouldEndGame = current.length === pokemonList.length;
+      await setDoc(gameRef, {
+        found: current,
+        guesses: currentGuesses,
+        guessesBy,
+        forceGroupedView: shouldEndGame
+      });
     });
 
     resetBtn.addEventListener("click", async () => {
